@@ -59,6 +59,8 @@ th{color:var(--dim);font-weight:600}
 
 .calrow{display:flex;align-items:center;gap:8px;margin-top:10px}.calrow .dim{flex:1;font-size:13px}
 #calBtn{flex:none;padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:#0f1419;color:var(--fg);font-size:13px}
+
+#score tr.r{cursor:pointer}#score tr.r:active{background:#1d2a3a}#score td{white-space:nowrap}#score .sel{background:#1d2a3a}
 #phead{position:absolute;top:10px;bottom:0;width:2px;background:var(--warn);pointer-events:none}
 </style>
 </head>
@@ -74,7 +76,7 @@ th{color:var(--dim);font-weight:600}
 <section id="diag" class="hidden">
   <div class="card">
     <h2>귀 문제인가, 목 문제인가</h2>
-    <div class="dim">두 음을 연달아 들려줍니다. 어느 쪽이 높은지 고르세요. 맞히면 차이가 줄고 틀리면 커집니다. 약 2~3분. 조용한 곳에서.</div>
+    <div class="dim">두 음을 연달아 들려줍니다. 어느 쪽이 높은지 고르세요. 맞히면 차이가 줄고 틀리면 커집니다. 약 1~2분. 조용한 곳에서.</div>
     <button class="big" id="dStart">검사 시작</button>
     <div id="dBox" class="hidden">
       <button class="big alt" id="dReplay">다시 듣기</button>
@@ -96,7 +98,7 @@ th{color:var(--dim);font-weight:600}
     </select>
     <div class="notes" id="notes"></div>
     <button class="big" id="pGo">▶ 듣고 → 🎙 부르기</button>
-    <div class="dim" style="margin-top:6px">기준음 2초 → "삐" 신호 → 4초 동안 "아—"로 길게. 자동 채점·기록.</div>
+    <div class="dim" style="margin-top:6px">기준음 1.5초 → "삐" → 3초 동안 "아—"로 길게. 자동 채점·기록.</div>
   </div>
   <div class="card" id="takeCard">
     <div id="needle"><div class="band"></div><div class="mid"></div><div class="dot" id="dot"></div>
@@ -106,6 +108,11 @@ th{color:var(--dim);font-weight:600}
     <div style="position:relative"><canvas id="pCv" height="200" class="hidden"></canvas><div id="phead" class="hidden"></div></div>
     <div id="pPlay" class="row hidden"><button class="big alt" id="pMine">▶ 내 목소리</button><button class="big alt" id="pCmp">▶ 기준음 → 내 목소리</button></div>
     <div id="pRes"></div>
+  </div>
+  <div class="card">
+    <h2>내 채점표</h2>
+    <div class="dim">줄을 누르면 그때의 그래프·채점이 다시 뜨고 녹음이 재생됩니다.</div>
+    <div id="score"></div>
   </div>
   <div class="card">
     <h2>자유 연습</h2>
@@ -213,21 +220,21 @@ if(!DB.rec.some(r=>r.type==='diag'))showTab('diag');
 // ================= ① 진단 =================
 let D=null;
 function dTrial(){const base=200*Math.pow(2,Math.random()),up=Math.random()<0.5,hi=base*Math.pow(2,D.diff/1200);
-  D.cur={first:up?hi:base,second:up?base:hi,ans:up?'A':'B'};dPlay();$('dProg').textContent=`시행 ${D.n+1} · 진행 ${D.rev.length}/8`;}
+  D.cur={first:up?hi:base,second:up?base:hi,ans:up?'A':'B'};dPlay();$('dProg').textContent=`시행 ${D.n+1} · 진행 ${D.rev.length}/6`;}
 function dPlay(){const t=ac().currentTime+0.1;tone(D.cur.first,t,0.5);tone(D.cur.second,t+0.8,0.5);}
 function dAnswer(a){const ok=a===D.cur.ans;D.n++;let dir=null;
-  if(ok){if(++D.streak>=2){dir='down';D.streak=0;}}else{dir='up';D.streak=0;}
+  if(ok){if(++D.streak>=(D.fast?1:2)){dir='down';D.streak=0;}}else{dir='up';D.streak=0;D.fast=false;}
   if(dir){if(D.last&&dir!==D.last)D.rev.push(D.diff);D.last=dir;D.diff=dir==='down'?Math.max(3,D.diff*0.7):Math.min(400,D.diff/0.7);}
-  if(D.rev.length>=8||D.n>=60)return dEnd();setTimeout(dTrial,350);}
+  D.floorOk=ok&&D.diff<=3?(D.floorOk||0)+1:0;if(D.rev.length>=6||D.n>=40||D.floorOk>=6)return dEnd();setTimeout(dTrial,350);}
 function dEnd(){$('dBox').classList.add('hidden');$('dStart').classList.remove('hidden');
-  const r=D.rev.slice(-6),c=Math.round(r.length?Math.exp(r.reduce((s,v)=>s+Math.log(v),0)/r.length):D.diff);
+  const r=D.rev.slice(-4),c=Math.round(r.length?Math.exp(r.reduce((s,v)=>s+Math.log(v),0)/r.length):D.diff);
   let col,msg;
   if(c<=30){col='var(--ok)';msg=`<b>귀는 정상 이상.</b> 반음의 1/3 이하 차이까지 구분합니다. 원인은 <b>목(들은 음 → 발성 연결)</b>쪽. 🎤 음정 훈련이 바로 효과를 냅니다.`;}
   else if(c<=100){col='var(--warn)';msg=`<b>보통 범위.</b> 반음 정도는 구분하지만 세밀하진 않습니다. 진단과 음정을 번갈아 훈련하세요.`;}
   else{col='var(--bad)';msg=`<b>반음 이상 차이도 헷갈림.</b> 선천성 음치(실음악증) 가능성(인구 약 1.5~4%). 다른 날 다시 재보고, 같으면 이 검사를 매일 훈련으로 반복하세요.`;}
   $('dRes').innerHTML=`<div class="stat"><div><span class="dim">구분 한계</span><b>${c} 센트</b></div><div><span class="dim">반음 대비</span><b>${(c/100).toFixed(2)}</b></div></div>`+verdict(col,msg);
   addRec({type:'diag',v:c});}
-$('dStart').onclick=()=>{ac();D={diff:100,streak:0,rev:[],last:null,n:0};$('dRes').innerHTML='';$('dStart').classList.add('hidden');$('dBox').classList.remove('hidden');dTrial();};
+$('dStart').onclick=()=>{ac();D={diff:100,streak:0,rev:[],last:null,n:0,fast:true};$('dRes').innerHTML='';$('dStart').classList.add('hidden');$('dBox').classList.remove('hidden');dTrial();};
 $('dReplay').onclick=dPlay;$('dA').onclick=()=>dAnswer('A');$('dB').onclick=()=>dAnswer('B');
 
 // ================= ② 음정 =================
@@ -266,15 +273,15 @@ function micErr(e){$('pRes').innerHTML=verdict('var(--bad)','마이크를 쓸 �
 let busy=false;
 $('pGo').onclick=async()=>{if(busy)return;busy=true;stopPlay();$('pGo').disabled=true;$('pRes').innerHTML='';$('pCv').classList.add('hidden');
   try{micOff();$('takeCard').scrollIntoView({behavior:'smooth'});
-    $('liveSub').textContent='🔊 기준음 '+nname(target);const c=ac();tone(mf(target),c.currentTime+0.05,2.0);await sleep(2150);
+    $('liveSub').textContent='🔊 기준음 '+nname(target);const c=ac();tone(mf(target),c.currentTime+0.05,1.5);await sleep(1650);
     $('liveSub').textContent='마이크 준비…';await micOn();
     recStart();tone(1200,ac().currentTime+0.02,0.08,0.15);await sleep(150);
     const tr=[],t0=performance.now();
-    await new Promise(res=>{const loop=()=>{const t=(performance.now()-t0)/1000;if(t>4){res();return;}
+    await new Promise(res=>{const loop=()=>{const t=(performance.now()-t0)/1000;if(t>3){res();return;}
       MIC.an.getFloatTimeDomainData(MIC.buf);const f0=yin(MIC.buf,ac().sampleRate);const cc=f0?centsOf(f0):null;tr.push({t,c:cc});needle(cc);
-      $('liveSub').textContent='🎙 부르세요 '+(4-t).toFixed(1)+'초';requestAnimationFrame(loop);};loop();});
-    const rec=await recStop();micOff();$('liveSub').textContent='채점 완료';analyze(trim(tr),true);
-    await setTake(rec&&rec.blob,rec?(t0-rec.t)/1000:0,target);
+      $('liveSub').textContent='🎙 부르세요 '+(3-t).toFixed(1)+'초';requestAnimationFrame(loop);};loop();});
+    const rec=await recStop();micOff();$('liveSub').textContent='채점 완료';const T=trim(tr),ts=analyze(T,true),off=rec?(t0-rec.t)/1000:0;
+    await setTake(rec&&rec.blob,off,target);if(ts)await keepTake(ts,rec&&rec.blob,off,T);
   }catch(e){micOff();micErr(e);$('liveSub').textContent='대기 중';}
   busy=false;$('pGo').disabled=false;};
 $('pRef').onclick=()=>{stopPlay();const was=!!MIC;if(was){micOff();$('pFree').textContent='🎙 바늘 켜기';}tone(mf(target),ac().currentTime+0.05,2.0);};
@@ -301,9 +308,34 @@ function playTake(withRef){if(!TAKE)return;stopPlay();if(MIC){micOff();$('pFree'
     if(tt>=0&&PMAP&&tt>=PMAP.T0&&tt<=PMAP.T1){ph.style.left=(8+(tt-PMAP.T0)/((PMAP.T1-PMAP.T0)||1)*(PMAP.w-16))+'px';ph.classList.remove('hidden');}else ph.classList.add('hidden');
     requestAnimationFrame(loop);};loop();}
 $('pMine').onclick=()=>playTake(false);$('pCmp').onclick=()=>playTake(true);
+// ---- 채점표: 녹음·궤적을 IndexedDB에 보관(최근 60개) ----
+const IDB=(()=>{let p=null;return()=>p||(p=new Promise((res,rej)=>{const q=indexedDB.open('ptrain-audio',1);q.onupgradeneeded=()=>q.result.createObjectStore('takes');q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);}));})();
+async function idb(mode,fn){const db=await IDB();return new Promise((res,rej)=>{const tx=db.transaction('takes',mode),st=tx.objectStore('takes');const r=fn(st);tx.oncomplete=()=>res(r&&r.result);tx.onerror=()=>rej(tx.error);});}
+let HAS=new Set(),showAll=false,selTs=null;
+async function keepTake(ts,blob,off,track){try{
+  await idb('readwrite',st=>st.put({blob:blob||null,off,track:track.map(p=>[+p.t.toFixed(3),p.c==null?null:Math.round(p.c)])},ts));
+  const keys=await idb('readonly',st=>st.getAllKeys());if(keys.length>60)await idb('readwrite',st=>{keys.sort((a,b)=>a-b).slice(0,keys.length-60).forEach(k=>st.delete(k));});
+  HAS=new Set((await idb('readonly',st=>st.getAllKeys())));}catch(e){}selTs=ts;renderScore();}
+async function loadHas(){try{HAS=new Set(await idb('readonly',st=>st.getAllKeys()));}catch(e){HAS=new Set();}renderScore();}
+function renderScore(){const P=DB.rec.filter(r=>r.type==='pitch').slice().reverse(),L=showAll?P:P.slice(0,15);
+  if(!P.length){$('score').innerHTML='<div class="dim" style="margin-top:8px">아직 채점 기록이 없습니다.</div>';return;}
+  const d2=ts=>{const d=new Date(ts);return (d.getMonth()+1)+'/'+d.getDate()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');};
+  $('score').innerHTML=`<table><tr><th>일시</th><th>음</th><th>어긋남</th><th>±50</th><th></th></tr>`+L.map(r=>{const c=r.v<=50?'var(--ok)':r.v<=100?'var(--warn)':'var(--bad)',h=HAS.has(r.ts);
+    return `<tr class="${h?'r':''}${r.ts===selTs?' sel':''}" data-ts="${r.ts}"><td>${d2(r.ts)}</td><td>${nname(r.note)}</td><td><span class="pill" style="background:${c};color:#04111f">${r.signed>0?'+':''}${r.signed}c</span></td><td>${r.inb!=null?r.inb+'%':'—'}</td><td>${h?'▶':'<span class="dim">—</span>'}</td></tr>`;}).join('')+'</table>'
+    +(P.length>15?`<button class="big alt" id="scMore" style="padding:10px;font-size:14px">${showAll?'접기':'전체 '+P.length+'개 보기'}</button>`:'')
+    +(P.some(r=>!HAS.has(r.ts))?'<div class="dim" style="margin-top:6px;font-size:12px">— 표시는 녹음이 없는 기록(이 기능 전 기록·오래된 기록)</div>':'');
+  $('score').querySelectorAll('tr.r').forEach(tr=>tr.onclick=()=>openTake(+tr.dataset.ts));
+  if($('scMore'))$('scMore').onclick=()=>{showAll=!showAll;renderScore();};}
+async function openTake(ts){const r=DB.rec.find(x=>x.ts===ts);let v;try{v=await idb('readonly',st=>st.get(ts));}catch(e){}if(!r||!v)return;
+  stopPlay();if(MIC){micOff();$('pFree').textContent='🎙 바늘 켜기';}selTs=ts;renderScore();
+  const tr=v.track.map(([t,c])=>({t,c}));analyze(tr,false,r.note);
+  const d=new Date(ts);$('liveSub').textContent=`${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')} 기록 다시 보기 · 목표 ${nname(r.note)}`;
+  $('takeCard').scrollIntoView({behavior:'smooth'});
+  if(v.blob){await setTake(v.blob,v.off,r.note);playTake(false);}else{TAKE=null;$('pPlay').classList.add('hidden');}}
+loadHas();
 function trim(tr){while(tr.length&&tr[0].c==null)tr.shift();while(tr.length&&tr[tr.length-1].c==null)tr.pop();return tr;}
 
-function analyze(track,save){const cv=$('pCv');PMAP=null;const voiced=track.filter(p=>p.c!=null);
+function analyze(track,save,tg){if(tg==null)tg=target;const cv=$('pCv');PMAP=null;const voiced=track.filter(p=>p.c!=null);
   if(voiced.length<10){$('pRes').innerHTML=verdict('var(--bad)','목소리가 거의 잡히지 않았습니다. 폰 아래쪽(마이크)을 입 쪽으로 향하고 길게 불러 주세요. \'내 목소리\'로 녹음이 어떻게 들렸는지 확인할 수 있습니다.');return;}
   cv.classList.remove('hidden');
   const raw=voiced.map(p=>p.c).sort((a,b)=>a-b),oct=Math.round(raw[Math.floor(raw.length/2)]/1200);
@@ -316,7 +348,7 @@ function analyze(track,save){const cv=$('pCv');PMAP=null;const voiced=track.filt
   x.fillStyle='rgba(62,207,142,.15)';x.fillRect(0,Y(50),w,Y(-50)-Y(50));
   x.strokeStyle='#2a3440';[-200,-100,100,200].forEach(c=>{x.beginPath();x.moveTo(0,Y(c));x.lineTo(w,Y(c));x.stroke();});
   x.strokeStyle='#3ecf8e';x.beginPath();x.moveTo(0,h/2);x.lineTo(w,h/2);x.stroke();
-  x.fillStyle='#8a97a6';x.font='11px sans-serif';x.fillText('+반음',4,Y(100)-3);x.fillText('−반음',4,Y(-100)-3);x.fillText('목표 '+nname(target),w-62,h/2-4);
+  x.fillStyle='#8a97a6';x.font='11px sans-serif';x.fillText('+반음',4,Y(100)-3);x.fillText('−반음',4,Y(-100)-3);x.fillText('목표 '+nname(tg),w-62,h/2-4);
   x.fillStyle='#5aa9ff';sh.forEach(p=>{x.beginPath();x.arc(X(p.t),Y(Math.max(-300,Math.min(300,p.c))),2.2,0,7);x.fill();});
   const a=Math.abs(med),dir=med>0?'높게':'낮게';let col,msg;
   if(a<=50){col='var(--ok)';msg=`<b>맞게 불렀습니다.</b> 목표에서 ${Math.round(a)}센트(${dir}) — 허용범위(±50) 안.`;}
@@ -327,11 +359,11 @@ function analyze(track,save){const cv=$('pCv');PMAP=null;const voiced=track.filt
   if(sd>60)msg+=`<br><span class="dim">※ 음이 흔들림(편차 ${Math.round(sd)}센트). 숨을 충분히 쉬고 일정하게.</span>`;
   $('pRes').innerHTML=`<div class="stat"><div><span class="dim">중심 어긋남</span><b>${med>0?'+':''}${Math.round(med)} 센트</b></div><div><span class="dim">±50 안 비율</span><b>${Math.round(inb*100)}%</b></div></div>`+verdict(col,msg);
   $('liveTxt').textContent=(med>0?'+':'')+Math.round(med);
-  if(save)addRec({type:'pitch',v:Math.round(a),signed:Math.round(med),note:target,inb:Math.round(inb*100)});}
+  if(save){addRec({type:'pitch',v:Math.round(a),signed:Math.round(med),note:tg,inb:Math.round(inb*100)});return DB.rec[DB.rec.length-1].ts;}return null;}
 $('pFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;$('pRes').innerHTML='<div class="dim">분석 중…</div>';
   try{const buf=await ac().decodeAudioData(await f.arrayBuffer()),sr=buf.sampleRate,data=buf.getChannelData(0),N=2048,hop=Math.floor(sr*0.02),lim=Math.min(data.length-N,sr*15),tr=[];
     for(let i=0;i<lim;i+=hop){const f0=yin(data.subarray(i,i+N),sr);tr.push({t:i/sr,c:f0?centsOf(f0):null});}
-    analyze(trim(tr),true);await setTake(buf,0,target);}catch(err){$('pRes').innerHTML=verdict('var(--bad)','파일을 읽지 못했습니다 (m4a/mp3/wav).');}e.target.value='';};
+    const T=trim(tr),ts=analyze(T,true);await setTake(buf,0,target);if(ts)await keepTake(ts,f.size<4e6?f:null,0,T);}catch(err){$('pRes').innerHTML=verdict('var(--bad)','파일을 읽지 못했습니다 (m4a/mp3/wav).');}e.target.value='';};
 
 // ================= ③ 박자 =================
 // --- 소리 시작점(onset) 검출: 저역통과(메트로놈 고음 제거) → 에너지 급상승 감지 ---
@@ -482,10 +514,10 @@ $('exp').onclick=async()=>{const txt=JSON.stringify(DB),name='음정박자_백�
   try{const f=new File([txt],name,{type:'application/json'});if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f]});$('bkMsg').textContent='공유 시트로 저장했습니다 (파일 앱에 저장 권장).';return;}}catch(e){if(e.name==='AbortError')return;}
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'application/json'}));a.download=name;a.click();$('bkMsg').textContent='다운로드했습니다.';};
 $('imp').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const d=JSON.parse(await f.text());if(!Array.isArray(d.rec))throw 0;
-  const seen=new Set(DB.rec.map(r=>r.ts+r.type));d.rec.forEach(r=>{if(!seen.has(r.ts+r.type))DB.rec.push(r);});DB.rec.sort((a,b)=>a.ts-b.ts);save();renderLog();$('bkMsg').textContent=d.rec.length+'건 불러옴(중복 제외 병합).';}
+  const seen=new Set(DB.rec.map(r=>r.ts+r.type));d.rec.forEach(r=>{if(!seen.has(r.ts+r.type))DB.rec.push(r);});DB.rec.sort((a,b)=>a.ts-b.ts);save();renderLog();renderScore();$('bkMsg').textContent=d.rec.length+'건 불러옴(중복 제외 병합).';}
   catch(err){$('bkMsg').textContent='올바른 백업 파일이 아닙니다.';}e.target.value='';};
 let clrArm=0;$('clr').onclick=()=>{if(Date.now()-clrArm>3000){clrArm=Date.now();$('clr').textContent='한 번 더 누르면 삭제';setTimeout(()=>$('clr').textContent='기록 전체 삭제',3000);return;}
-  DB={rec:[]};save();renderLog();$('clr').textContent='기록 전체 삭제';$('bkMsg').textContent='삭제했습니다.';};
+  DB={rec:[]};save();renderLog();idb('readwrite',st=>st.clear()).catch(()=>{});HAS=new Set();renderScore();$('clr').textContent='기록 전체 삭제';$('bkMsg').textContent='삭제했습니다.';};
 </script>
 </body>
 </html>
