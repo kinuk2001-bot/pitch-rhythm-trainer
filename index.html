@@ -196,7 +196,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const mf=m=>440*Math.pow(2,(m-69)/12);
 const NN=['도','도#','레','레#','미','파','파#','솔','솔#','라','라#','시'];
 const nname=m=>NN[m%12]+(Math.floor(m/12)-1);
-function setupCv(cv){const r=window.devicePixelRatio||1,w=cv.clientWidth,h=+cv.getAttribute('height');cv.width=w*r;cv.height=h*r;cv.style.height=h+'px';const x=cv.getContext('2d');x.scale(r,r);return [x,w,h];}
+function setupCv(cv){const r=window.devicePixelRatio||1,w=cv.clientWidth;if(!cv.dataset.h)cv.dataset.h=cv.getAttribute('height');const h=+cv.dataset.h;cv.width=w*r;cv.height=h*r;cv.style.height=h+'px';const x=cv.getContext('2d');x.scale(r,r);return [x,w,h];}
 const verdict=(c,h)=>`<div class="verdict" style="border-color:${c}">${h}</div>`;
 const $=id=>document.getElementById(id);
 
@@ -399,7 +399,7 @@ function bEnd(){const S=B;B=null;odOff();if(S.mic)micOff();$('bStart').disabled=
   if(mode==='melody')pc=beats.map((b,i)=>{const a=b+lat+0.07,z=b+lat+Math.min(0.45,iv*0.8);
     const cs=S.trk.filter(p=>p.f&&p.t>=a&&p.t<=z).map(p=>{const c=1200*Math.log2(p.f/mf(notes[i]));return c-Math.round(c/1200)*1200;}).sort((x,y)=>x-y);
     return cs.length>=2?cs[Math.floor(cs.length/2)]:null;});
-  const cv=$('bCv');cv.setAttribute('height',mode==='melody'?300:200);cv.classList.remove('hidden');const [x,w,h]=setupCv(cv),R=Math.min(250,iv*500);
+  const cv=$('bCv');cv.dataset.h=mode==='melody'?300:200;cv.classList.remove('hidden');const [x,w,h]=setupCv(cv),R=Math.min(250,iv*500);
   const th=mode==='melody'?140:h;
   const bw=bars(x,w,0,th,off.map(v=>v==null?null:-v),R,30,60,['↑ 빠름','↓ 늦음']);
   if(mode==='internal'){x.fillStyle='rgba(90,169,255,.08)';x.fillRect(8+8*bw,0,8*bw,h);x.fillStyle='#8a97a6';x.font='11px sans-serif';x.fillText('무음',8+8*bw+4,h-4);}
@@ -442,7 +442,7 @@ function line(cv,pts,good,bad){const [x,w,h]=setupCv(cv);if(!pts.length){x.fillS
   x.fillStyle='#8a97a6';x.font='11px sans-serif';x.fillText(mx.toFixed(0),2,12);x.fillText('0',2,h-4);x.fillText('최근 '+pts.length+'회 · 선=5회 평균',w-120,12);}
 function renderLog(){const R=DB.rec,days=[...new Set(R.map(r=>dayKey(r.ts)))];
   let streak=0;for(let d=new Date();;d.setDate(d.getDate()-1)){if(days.includes(dayKey(d.getTime())))streak++;else if(streak||dayKey(d.getTime())!==dayKey(Date.now()))break;}
-  const P=R.filter(r=>r.type==='pitch'),Bt=R.filter(r=>r.type==='beat'),Dg=R.filter(r=>r.type==='diag');
+  const P=R.filter(r=>r.type==='pitch'),Bt=R.filter(r=>r.type==='beat'||(r.type==='mel'&&r.sd!=null)).map(r=>r.type==='mel'?Object.assign({},r,{v:r.sd}):r),Dg=R.filter(r=>r.type==='diag');
   const avg=(a,k='v')=>a.length?Math.round(a.reduce((s,r)=>s+r[k],0)/a.length):'—';
   const hit=P.length?Math.round(P.slice(-20).filter(r=>r.v<=50).length/P.slice(-20).length*100)+'%':'—';
   $('sum').innerHTML=`<div><span class="dim">연습한 날</span><b>${days.length}일</b></div><div><span class="dim">연속</span><b>${streak}일</b></div>
