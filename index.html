@@ -56,6 +56,9 @@ td,th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left}
 th{color:var(--dim);font-weight:600}
 .pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:700}
 #installHint{border-color:var(--warn)}
+
+.calrow{display:flex;align-items:center;gap:8px;margin-top:10px}.calrow .dim{flex:1;font-size:13px}
+#calBtn{flex:none;padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:#0f1419;color:var(--fg);font-size:13px}
 #phead{position:absolute;top:10px;bottom:0;width:2px;background:var(--warn);pointer-events:none}
 </style>
 </head>
@@ -128,6 +131,7 @@ th{color:var(--dim);font-weight:600}
       <option value="mic">입력: 소리 (손뼉·"따")</option>
     </select>
     <div class="dim hidden" id="micTip" style="margin-top:6px">소리는 <b>짧게 끊어서</b>("따·따·따", 손뼉). 이어 부르면 박이 안 잡힙니다. 메트로놈 소리가 마이크에 섞이지 않게 <b>유선 이어폰</b> 권장 — 스피커면 볼륨을 낮게. 음역은 🎤 음정 탭 설정을 따릅니다.</div>
+    <div class="calrow"><div class="dim" id="calTxt"></div><button id="calBtn">다시 측정</button></div>
     <button class="big" id="bStart">시작 (4박 예비 후 측정)</button>
     <button id="pad">여기를 박자에 맞춰 탭</button>
     <div class="dim" id="bState" style="margin-top:6px;text-align:center"></div>
@@ -358,14 +362,36 @@ function bUI(){const m=$('mode').value;if(m==='melody')$('inp').value='mic';$('i
   pad.textContent=mic?'🎙 소리로 채점 — 박에 맞춰 "따"':'여기를 박자에 맞춰 탭';}
 $('mode').onchange=bUI;$('inp').onchange=bUI;bUI();
 function flash(){pad.classList.add('hit');setTimeout(()=>pad.classList.remove('hit'),80);}
+// --- 지연 보정: 스피커로 낸 측정음을 마이크로 다시 잡아 실제 지연(스피커+마이크)을 잰다 ---
+const TOUCH=0.03;let calTried=false; // 화면 터치 지연 추정(아이폰)
+let CAL=(()=>{try{return JSON.parse(localStorage.getItem(KEY+'.cal'));}catch(e){return null;}})();
+function calTxt(warn){$('calTxt').innerHTML=warn?`<span style="color:var(--warn)">${warn}</span>`:CAL?`지연 보정 <b>${Math.round(CAL.rtt*1000)}ms</b> · ${new Date(CAL.ts).toLocaleDateString('ko-KR')} 측정 (기기가 알려준 값 ${Math.round(CAL.rep*1000)}ms)`:'지연 보정 전 — 시작하면 먼저 5초간 측정합니다';}
+calTxt();
+function calClick(t){const c=ac(),o=c.createOscillator(),g=c.createGain();o.type='triangle';o.frequency.value=500;o.connect(g);g.connect(c.destination);
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(0.9,t+0.002);g.gain.exponentialRampToValueAtTime(0.001,t+0.06);o.start(t);o.stop(t+0.07);}
+async function calibrate(){$('bState').textContent='🔧 지연 측정 중 — 조용히, 이어폰 빼고 스피커로';
+  const c=ac(),rp=(c.outputLatency||c.baseLatency||0);
+  try{await micOn();const got=[];await odOn(m=>{if(m.o!=null)got.push(m.o);},0.2);await sleep(700);
+    const T=[];let tt=c.currentTime+0.2;for(let i=0;i<8;i++){T.push(tt);calClick(tt);tt+=0.45+Math.random()*0.35;} // 불규칙 간격: 주기적 잡음과 우연히 맞지 않게
+    await sleep((T[7]-c.currentTime+0.6)*1000);odOff();micOff();
+    const d=T.map(t=>{const o=got.find(v=>v>=t-0.01&&v<=t+0.4);return o==null?null:o-t;}).filter(v=>v!=null).sort((a,b)=>a-b);
+    if(d.length<6)return `측정음이 ${d.length}/8번만 잡힘`;
+    const med=d[Math.floor(d.length/2)],spr=d[Math.floor(d.length*0.8)]-d[Math.floor(d.length*0.2)];
+    if(spr>0.015)return `측정값이 들쭉날쭉함(${Math.round(spr*1000)}ms)`;
+    CAL={rtt:med,rep:rp,ts:Date.now()};try{localStorage.setItem(KEY+'.cal',JSON.stringify(CAL));}catch(e){}calTxt();return null;}
+  catch(e){odOff();micOff();return '마이크를 쓸 수 없음';}}
+const calFail=m=>calTxt(`지연 측정 실패(${m}). 이어폰을 빼고 볼륨을 올려 '다시 측정'. 그 전까진 기기 값으로 채점.`);
+$('calBtn').onclick=async()=>{if(B||$('bStart').disabled)return;stopPlay();$('bStart').disabled=true;$('calBtn').disabled=true;
+  const r=await calibrate();if(r)calFail(r);$('bState').textContent=r?'':'✔ 측정 완료';$('bStart').disabled=false;$('calBtn').disabled=false;};
 let B=null;
 $('bStart').onclick=async()=>{if(B)return;stopPlay();micOff();$('pFree').textContent='🎙 바늘 켜기';
   const bpm=+$('bpm').value,iv=60/bpm,mode=$('mode').value,mic=$('inp').value==='mic'||mode==='melody';
-  $('bRes').innerHTML='';$('bCv').classList.add('hidden');$('bStart').disabled=true;
+  $('bRes').innerHTML='';$('bCv').classList.add('hidden');$('bStart').disabled=true;$('calBtn').disabled=true;
+  if(!CAL&&!calTried){calTried=true;const r=await calibrate();if(r)calFail(r);else{$('bState').textContent=`✔ 지연 ${Math.round(CAL.rtt*1000)}ms — 이제 연습을 시작합니다`;await sleep(1200);}}
   if(mic){try{$('bState').textContent='마이크 준비…';await micOn();
       await odOn(m=>{if(m.o!=null&&B&&m.o>=B.win0&&m.o<=B.end){B.taps.push(m.o);flash();}},Math.max(0.1,iv*0.4));}
-    catch(e){odOff();micOff();$('bStart').disabled=false;$('bState').textContent='';$('bRes').innerHTML=verdict('var(--bad)','마이크를 쓸 수 없습니다. ('+(e&&e.name||e)+')');return;}}
-  const c=ac(),lat=(c.outputLatency||c.baseLatency||0),t0=c.currentTime+0.5,beats=[],ck=(t,a)=>click(t,a,mic);let notes=null;
+    catch(e){odOff();micOff();$('bStart').disabled=false;$('calBtn').disabled=false;$('bState').textContent='';$('bRes').innerHTML=verdict('var(--bad)','마이크를 쓸 수 없습니다. ('+(e&&e.name||e)+')');return;}}
+  const c=ac(),rp=(c.outputLatency||c.baseLatency||0),lat=mic?(CAL?CAL.rtt:rp+0.01):(CAL?CAL.rtt/2:rp),t0=c.currentTime+0.5,beats=[],ck=(t,a)=>click(t,a,mic);let notes=null;
   for(let i=0;i<4;i++)ck(t0+i*iv,i===0);
   if(mode==='melody'){const base=+$('range').value.split(',')[0];notes=$('mel').value.split(',').map(v=>base+(+v));
     for(let i=0;i<8;i++){const t=t0+(4+i)*iv;ck(t,i%4===0);tone(mf(notes[i]),t,iv*0.7,0.25);}
@@ -380,7 +406,7 @@ $('bStart').onclick=async()=>{if(B)return;stopPlay();micOff();$('pFree').textCon
     else s=(mode==='internal'&&now>=beats[8]-iv/2)?'🔇 무음 — 같은 템포로 계속':(mic?'🎙 박에 맞춰 소리!':'탭!');
     $('bState').textContent=s;
     if(now>B.end)bEnd();else requestAnimationFrame(tick);};tick();};
-pad.addEventListener('pointerdown',e=>{e.preventDefault();if(B&&B.mic)return;flash();if(B)B.taps.push(ac().currentTime);});
+pad.addEventListener('pointerdown',e=>{e.preventDefault();if(B&&B.mic)return;flash();if(B)B.taps.push(ac().currentTime-TOUCH);});
 
 function bars(x,w,top,h,vals,R,g,y2,lab){const Y=v=>top+h/2-v/R*(h/2-12),bw=(w-16)/vals.length;
   x.fillStyle='rgba(62,207,142,.12)';x.fillRect(0,Y(g),w,Y(-g)-Y(g));x.strokeStyle='#3ecf8e';x.beginPath();x.moveTo(0,top+h/2);x.lineTo(w,top+h/2);x.stroke();
@@ -388,7 +414,7 @@ function bars(x,w,top,h,vals,R,g,y2,lab){const Y=v=>top+h/2-v/R*(h/2-12),bw=(w-1
   vals.forEach((v,i)=>{const cx=8+i*bw+bw*0.15,ww=bw*0.7;if(v==null){x.fillStyle='#f2665c';x.fillText('×',cx+ww/2-3,top+h/2+4);return;}
     const y=Y(Math.max(-R,Math.min(R,v)));x.fillStyle=Math.abs(v)<=g?'#3ecf8e':Math.abs(v)<=y2?'#f5b84b':'#f2665c';x.fillRect(cx,Math.min(y,top+h/2),ww,Math.abs(y-top-h/2)||2);});
   return bw;}
-function bEnd(){const S=B;B=null;odOff();if(S.mic)micOff();$('bStart').disabled=false;$('bState').textContent='';
+function bEnd(){const S=B;B=null;odOff();if(S.mic)micOff();$('bStart').disabled=false;$('calBtn').disabled=false;$('bState').textContent='';
   const {beats,iv,lat,mode,bpm,taps,mic,notes}=S,N=beats.length,off=new Array(N).fill(null);
   taps.forEach(t=>{let bi=-1,bd=1e9;beats.forEach((b,i)=>{const d=t-(b+lat);if(Math.abs(d)<Math.abs(bd)){bd=d;bi=i;}});if(Math.abs(bd)<iv/2&&off[bi]==null)off[bi]=bd*1000;});
   const seg=(a,b)=>off.slice(a,b).filter(v=>v!=null);
@@ -411,7 +437,7 @@ function bEnd(){const S=B;B=null;odOff();if(S.mic)micOff();$('bStart').disabled=
   if(sd<=30){col='var(--ok)';msg=`<b>박자 안정.</b> 흔들림 ${sd}ms — 훈련된 수준.`;}
   else if(sd<=60){col='var(--warn)';msg=`<b>박자 보통.</b> 흔들림 ${sd}ms. 템포를 60~70으로 낮춰 정확도부터.`;}
   else{col='var(--bad)';msg=`<b>박자 흔들림 큼(${sd}ms).</b> 60 BPM에서 소리와 '같이 내는' 느낌이 올 때까지. 발로도 함께 밟으세요.`;}
-  msg+=`<br><span class="dim">평균 ${m<0?Math.abs(m)+'ms 앞서':m+'ms 늦게'}${m<0&&m>=-50?' (20~50ms 앞서는 건 정상 경향)':''}${mic?' · 소리 입력은 마이크 지연만큼 늦게 나올 수 있음':''}</span>`;
+  msg+=`<br><span class="dim">평균 ${m<0?Math.abs(m)+'ms 앞서':m+'ms 늦게'}${m<0&&m>=-50?' (20~50ms 앞서는 건 정상 경향)':''}${CAL?'':' · 지연 미보정이라 참고만'}</span>`;
   let extra='',myBpm=null;
   if(mode==='internal'){const sil=[];off.slice(8).forEach((v,i)=>{if(v!=null)sil.push({i:i+8,v});});
     if(sil.length>=4){const n=sil.length,mi=sil.reduce((s,p)=>s+p.i,0)/n,mv=sil.reduce((s,p)=>s+p.v,0)/n,sl=sil.reduce((s,p)=>s+(p.i-mi)*(p.v-mv),0)/sil.reduce((s,p)=>s+(p.i-mi)**2,0);
